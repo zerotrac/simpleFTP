@@ -15,6 +15,9 @@
 
 struct Server_logic
 {
+    int server_port;
+    char server_path[RECEIVE_DATA_MAX];
+    
     int server_fd;
     struct sockaddr_in server_addr;
     char recv_data[RECEIVE_DATA_MAX];
@@ -26,12 +29,13 @@ struct Server_logic
 };
 
 int server_create(struct Server_logic* logic);
-int server_create(struct Server_logic* logic);
 int server_bind(struct Server_logic* logic);
 int server_unblock(struct Server_logic* logic);
 int server_listen(struct Server_logic* logic);
 int server_start(struct Server_logic* logic);
 int kqueue_start(struct Server_logic* logic);
 int execute(struct Server_logic* logic);
+
+int set_default(struct Server_logic* logic, int argc, char* argv[]);
 
 #endif

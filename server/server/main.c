@@ -7,8 +7,9 @@
 
 #include "logic.h"
 
-int main()
+int main(int argc, char* argv[])
 {
     struct Server_logic* logic = (struct Server_logic*) malloc(sizeof(struct Server_logic));
+    if (set_default(logic, argc, argv) == 1) return 1;
     return execute(logic);
 }
