@@ -73,7 +73,7 @@ int server_start(struct Server_logic* logic)
     
     if (server_create(logic) == 1) return 1;
     if (server_bind(logic) == 1) return 1;
-    if (server_unblock(logic) == 1) return 1;
+    //if (server_unblock(logic) == 1) return 1;
     if (server_listen(logic) == 1) return 1;
     return 0;
 }
@@ -108,9 +108,10 @@ int execute(struct Server_logic* logic)
     while (1)
     {
         //puts("good");
-        int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, NULL);
+        struct timespec tmout = {3, 0};
+        int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, &tmout);
         
-        //printf("nev = %d\n", nev);
+        printf("nev = %d\n", nev);
         
         if (nev < 0)
         {
@@ -142,9 +143,10 @@ int execute(struct Server_logic* logic)
                     // new connection
                     
                     struct sockaddr_in client_addr;
+                    socklen_t len = sizeof client_addr;
                     //memset(&client_addr, 0, sizeof client_addr);
                     //printf("fd = %d\n", logic->server_fd);
-                    int client_fd = accept(logic->server_fd, NULL, NULL);
+                    int client_fd = accept(logic->server_fd, (struct sockaddr*)&client_addr, &len);
                     //printf("client_fd = %d\n", client_fd);
                     puts(inet_ntoa(client_addr.sin_addr));
                     if (client_fd == -1)
@@ -164,6 +166,7 @@ int execute(struct Server_logic* logic)
                     while (1)
                     {
                         ssize_t n = recv((int)cur_event.ident, logic->recv_data, RECEIVE_DATA_MAX, 0);
+                        printf("n = %d\n", (int)n);
                         if (n < 0)
                         {
                             //perror("read from client failed");

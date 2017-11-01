@@ -6,8 +6,8 @@
 #ifndef CONST_H
 #define CONST_H
 
-const int SOCKET_LISTEN_MAX = 20;
-const int KQUEUE_MONITOR_MAX = 50;
-const int RECEIVE_DATA_MAX = 8192;
+#define SOCKET_LISTEN_MAX 20
+#define KQUEUE_MONITOR_MAX 50
+#define RECEIVE_DATA_MAX 8192
 
 #endif

@@ -13,7 +13,7 @@
 
 #include "const.h"
 
-typedef struct Server_logic
+struct Server_logic
 {
     int server_fd;
     struct sockaddr_in server_addr;
@@ -23,6 +23,15 @@ typedef struct Server_logic
     int kqueue_cnt;
     struct kevent monitor_list[KQUEUE_MONITOR_MAX];
     struct kevent trigger_list[KQUEUE_MONITOR_MAX];
-}Server_logic;
+};
+
+int server_create(struct Server_logic* logic);
+int server_create(struct Server_logic* logic);
+int server_bind(struct Server_logic* logic);
+int server_unblock(struct Server_logic* logic);
+int server_listen(struct Server_logic* logic);
+int server_start(struct Server_logic* logic);
+int kqueue_start(struct Server_logic* logic);
+int execute(struct Server_logic* logic);
 
 #endif

@@ -5,7 +5,7 @@
 
 #include <stdlib.h>
 
-#include "logic.c"
+#include "logic.h"
 
 int main()
 {
