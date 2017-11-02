@@ -33,6 +33,7 @@ struct User_data
     int port;
     int fd;
     int pasvfd;
+    int which_stream;
     FILE* filefd;
 };
 

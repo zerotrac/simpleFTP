@@ -18,6 +18,7 @@ void User_initialize(struct User_data* user_data, int _client_type, void* _conne
     strcpy(user_data->relative_path, "/");
     
     user_data->fd = _fd;
+    user_data->which_stream = STREAM_RETR;
     user_data->filefd = NULL;
 }
 
@@ -33,8 +34,4 @@ void close_all(struct User_data* user_data)
         fa->accept_pt->closed = 1;
         close(fa->accept_pt->fd);
     }
-    
-    fa->deleted = 1;
-    fa->closed = 1;
-    close(fa->fd);
 }

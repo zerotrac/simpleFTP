@@ -23,4 +23,7 @@
 #define CONNECTION_PORT 1
 #define CONNECTION_PASV 2
 
+#define STREAM_RETR 0
+#define STREAM_STOR 1
+
 #endif

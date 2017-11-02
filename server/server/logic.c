@@ -117,6 +117,8 @@ int execute(struct Server_logic* logic)
     {
         int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, &tmout);
         
+        //printf("total count = %d\n", logic->kqueue_cnt);
+        
         if (nev < 0)
         {
             perror("kevent()");
@@ -165,12 +167,11 @@ int execute(struct Server_logic* logic)
                     {
                         ssize_t n = recv((int)cur_event.ident, logic->recv_data, RECEIVE_DATA_MAX, 0);
                         
-                        printf("receive data %d bytes.\n", (int)n);
+                        //printf("receive data %d bytes.\n", (int)n);
                         if (n < 0)
                         {
                             // client error
                             
-                            perror("read from client failed");
                             user_data->deleted = 1;
                             break;
                         }
@@ -194,8 +195,8 @@ int execute(struct Server_logic* logic)
                             continue;
                         }
                         
-                        printf("verb = |%s|\n", logic->command_verb);
-                        printf("param = |%s|\n", logic->command_param);
+                        //printf("verb = |%s|\n", logic->command_verb);
+                        //printf("param = |%s|\n", logic->command_param);
                         
                         if (!strcmp(logic->command_verb, "USER"))
                         {
@@ -204,6 +205,14 @@ int execute(struct Server_logic* logic)
                         else if (!strcmp(logic->command_verb, "PASS"))
                         {
                             cmd_PASS(logic, user_data);
+                        }
+                        else if (!strcmp(logic->command_verb, "QUIT"))
+                        {
+                            cmd_QUIT(logic, user_data);
+                        }
+                        else if (!strcmp(logic->command_verb, "ABOR"))
+                        {
+                            cmd_ABOR(logic, user_data);
                         }
                         else
                         {
@@ -238,6 +247,10 @@ int execute(struct Server_logic* logic)
                             {
                                 cmd_RETR(logic, user_data);
                             }
+                            else if (!strcmp(logic->command_verb, "STOR"))
+                            {
+                                cmd_STOR(logic, user_data);
+                            }
                             else
                             {
                                 send((int)cur_event.ident, S500, strlen(S500), 0);
@@ -261,14 +274,41 @@ int execute(struct Server_logic* logic)
                         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
                         User_initialize(data, CLIENT_FILE_PIPE, user_data->connect_pt, client_fd);
                         strcpy(data->file_path, user_data->file_path);
-                        EV_SET(&logic->monitor_list[logic->kqueue_cnt], client_fd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
+                        if (user_data->which_stream == STREAM_RETR)
+                        {
+                            EV_SET(&logic->monitor_list[logic->kqueue_cnt], client_fd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
+                        }
+                        else
+                        {
+                            EV_SET(&logic->monitor_list[logic->kqueue_cnt], client_fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+                        }
                             ++logic->kqueue_cnt;
                         
                         user_data->connect_pt->transport_pt = data;
                     }
                     else
                     {
+                        if (user_data->filefd == NULL)
+                        {
+                            user_data->filefd = fopen(user_data->file_path, "w");
+                            if (user_data->filefd == NULL)
+                            {
+                                send(user_data->connect_pt->fd, S451, strlen(S451), 0);
+                                close_all(user_data);
+                            }
+                        }
                         
+                        int cnt = (int)recv(user_data->fd, logic->recv_data, RECEIVE_DATA_MAX, 0);
+                        if (cnt)
+                        {
+                            fwrite(logic->recv_data, 1, cnt, user_data->filefd);
+                        }
+                        else
+                        {
+                            close_all(user_data);
+                            fclose(user_data->filefd);
+                            send(user_data->connect_pt->fd, S226, strlen(S226), 0);
+                        }
                     }
                 }
             }
@@ -291,8 +331,9 @@ int execute(struct Server_logic* logic)
                 }
                 if (cnt < RECEIVE_DATA_MAX)
                 {
-                    send(user_data->connect_pt->fd, S226, strlen(S226), 0);
                     close_all(user_data);
+                    fclose(user_data->filefd);
+                    send(user_data->connect_pt->fd, S226, strlen(S226), 0);
                 }
             }
         }
@@ -475,16 +516,18 @@ int cmd_TYPE(struct Server_logic* logic, struct User_data* user_data)
 int cmd_QUIT(struct Server_logic* logic, struct User_data* user_data)
 {
     send(user_data->fd, S221, strlen(S221), 0);
-    close(user_data->fd);
+    user_data->deleted = 1;
     user_data->closed = 1;
+    close(user_data->fd);
     return 0;
 }
 
 int cmd_ABOR(struct Server_logic* logic, struct User_data* user_data)
 {
     send(user_data->fd, S221, strlen(S221), 0);
-    close(user_data->fd);
+    user_data->deleted = 1;
     user_data->closed = 1;
+    close(user_data->fd);
     return 0;
 }
 
@@ -608,7 +651,57 @@ int cmd_RETR(struct Server_logic* logic, struct User_data* user_data)
 
 int cmd_STOR(struct Server_logic* logic, struct User_data* user_data)
 {
+    if (user_data->connection_type == CONNECTION_NONE)
+    {
+        // no connection return 425
+        
+        send(user_data->fd, S425, strlen(S425), 0);
+        return 0;
+    }
+    else if (user_data->connection_type == CONNECTION_PORT)
+    {
+        // port
+        
+        int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(user_data->port);
+        
+        if (inet_pton(AF_INET, user_data->host, &addr.sin_addr) <= 0)
+        {
+            send(user_data->fd, S426, strlen(S426), 0);
+            return 0;
+        }
+        
+        if (connect(sockfd, (struct sockaddr*)&addr, sizeof addr) < 0)
+        {
+            send(user_data->fd, S426, strlen(S426), 0);
+            return 0;
+        }
+        
+        struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
+        User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
+        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
+        EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+        ++logic->kqueue_cnt;
+        
+        user_data->transport_pt = data;
+    }
+    else
+    {
+        // pasv
+        
+        struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
+        User_initialize(data, CLIENT_ACCEPT_PIPE, user_data, user_data->pasvfd);
+        data->which_stream = STREAM_STOR;
+        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
+        EV_SET(&logic->monitor_list[logic->kqueue_cnt], user_data->pasvfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+        ++logic->kqueue_cnt;
+        
+        user_data->accept_pt = data;
+    }
     
+    send(user_data->fd, S150, strlen(S150), 0);
     return 0;
 }
 

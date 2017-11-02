@@ -9,7 +9,7 @@
 #define S215 "215 UNIX Type: L8\r\n"
 #define S220 "220 FTP server ready.\r\n"
 #define S221 "221 Goodbye.\r\n"
-#define S226 "226 Transfer complete."
+#define S226 "226 Transfer complete.\r\n"
 #define S227 "227 Entering Passive Mode (%s,%d,%d)\r\n"
 #define S230 "230 Login successful.\r\n"
 #define S331 "331 Please specify the password.\r\n"
