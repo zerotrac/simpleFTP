@@ -8,9 +8,9 @@
 #include <memory.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <ctype.h>
 
 #include "logic.h"
-#include "userdata.h"
 
 int server_create(struct Server_logic* logic)
 {
@@ -29,7 +29,7 @@ int server_bind(struct Server_logic* logic)
     
     memset(&logic->server_addr, 0, addr_sz);
     logic->server_addr.sin_family = AF_INET;
-    logic->server_addr.sin_port = 21;
+    logic->server_addr.sin_port = htons(logic->server_port);
     logic->server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     if (bind(logic->server_fd, (struct sockaddr*)&logic->server_addr, addr_sz) == -1)
     {
@@ -95,8 +95,8 @@ int kqueue_start(struct Server_logic* logic)
     // register server socket
     
     logic->kqueue_cnt = 1;
-    struct User_data server_data;
-    server_data.monitor_pos = 0;
+    struct User_data* server_data = (struct User_data*) malloc(sizeof(struct User_data));
+    User_initialize(server_data, 0);
     EV_SET(&logic->monitor_list[0], logic->server_fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, &server_data);
     
     return 0;
@@ -129,6 +129,7 @@ int execute(struct Server_logic* logic)
         for (int i = 0; i < nev; ++i)
         {
             struct kevent cur_event = logic->trigger_list[i];
+            struct User_data* user_data = cur_event.udata;
             
             if (cur_event.flags & EV_ERROR)
             {
@@ -136,7 +137,7 @@ int execute(struct Server_logic* logic)
                 logic->monitor_list[m_pos].flags |= EV_DELETE;
                 modified = 1;
             }
-            else
+            else if (cur_event.filter & EVFILT_READ)
             {
                 if (cur_event.ident == logic->server_fd)
                 {
@@ -145,7 +146,6 @@ int execute(struct Server_logic* logic)
                     struct sockaddr_in client_addr;
                     socklen_t len = sizeof client_addr;
                     int client_fd = accept(logic->server_fd, (struct sockaddr*)&client_addr, &len);
-                    puts(inet_ntoa(client_addr.sin_addr));
                     if (client_fd == -1)
                     {
                         perror("client connection failed");
@@ -153,26 +153,27 @@ int execute(struct Server_logic* logic)
                     else
                     {
                         struct User_data* client_data = (struct User_data*) malloc(sizeof(struct User_data));
-                        client_data->monitor_pos = logic->kqueue_cnt;
+                        User_initialize(client_data, logic->kqueue_cnt);
                         EV_SET(&logic->monitor_list[logic->kqueue_cnt], client_fd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, client_data);
                         ++logic->kqueue_cnt;
-                        puts(inet_ntoa(client_addr.sin_addr));
                     }
+                    send((int)client_fd, S220, strlen(S220), 0);
                 }
                 else
                 {
                     // receive data from client
                     
-                    int p = 0;
-                    while (1)
+                    if (1)
                     {
-                        ssize_t n = recv((int)cur_event.ident, logic->recv_data + p, RECEIVE_DATA_MAX - p, 0);
+                        ssize_t n = recv((int)cur_event.ident, logic->recv_data, RECEIVE_DATA_MAX, 0);
+                        
+                        printf("receive data %d bytes.\n", (int)n);
                         if (n < 0)
                         {
                             // client error
                             
                             perror("read from client failed");
-                            int m_pos = ((struct User_data*)cur_event.udata)->monitor_pos;
+                            int m_pos = user_data->monitor_pos;
                             logic->monitor_list[m_pos].flags |= EV_DELETE;
                             modified = 1;
                             break;
@@ -181,22 +182,146 @@ int execute(struct Server_logic* logic)
                         {
                             // client closed
                             
-                            int m_pos = ((struct User_data*)cur_event.udata)->monitor_pos;
+                            int m_pos = user_data->monitor_pos;
                             logic->monitor_list[m_pos].flags |= EV_DELETE;
                             modified = 1;
                             break;
                         }
                         
-                        p += n;
+                        logic->recv_data[n - 2] = '\0';
+                        logic->recv_data[n - 1] = '\0';
                         
-                        // ftp commands end with \n
+                        // ftp commands read finished
+                        // retrieve the verb
                         
-                        if (logic->recv_data[p - 1] == '\n') break;
+                        if (retrieve_verb(logic) == 1)
+                        {
+                            send((int)cur_event.ident, S500, strlen(S500), 0);
+                            continue;
+                        }
+                        
+                        printf("verb = |%s|\n", logic->command_verb);
+                        printf("param = |%s|\n", logic->command_param);
+                        if (!strcmp(logic->command_verb, "USER"))
+                        {
+                            printf("this is a user");
+                            cmd_USER(logic, cur_event, user_data);
+                        }
+                        else if (!strcmp(logic->command_verb, "PASS"))
+                        {
+                            cmd_PASS(logic, cur_event, user_data);
+                        }
+                        else
+                        {
+                            // all of the following verbs needs login
+                            
+                            if (user_data->login_status != LOGIN_SUCCESS)
+                            {
+                                send((int)cur_event.ident, S503, strlen(S503), 0);
+                                continue;
+                            }
+                            
+                            // handle verbs other than USER and PASS
+                            // with authentication
+                            
+                            if (!strcmp(logic->command_verb, "SYST"))
+                            {
+                                cmd_SYST(logic, cur_event, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "TYPE"))
+                            {
+                                cmd_TYPE(logic, cur_event, user_data);
+                            }
+                            else
+                            {
+                                send((int)cur_event.ident, S500, strlen(S500), 0);
+                            }
+                        }
+                        /*{
+                            
+                        }
+                        else if (retrieve_verb(logic) == 1)
+                        {
+                            send((int)cur_event.ident, S500, strlen(S500), 0);
+                        }
+                        else
+                        {
+                            if (!strcmp(logic->command_verb, "SYST"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "TYPE"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "QUIT"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "ABOR"))
+                            {
+                                
+                            }
+                            else
+                            {
+                                
+                            }
+                            
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "PORT"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "PASV"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "RETR"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "STOR"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "LIST"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "CWD"))
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "MKD"))
+                            {
+                                
+                            }
+                         
+                            {
+                                
+                            }
+                            else if (!strcmp(logic->command_verb, "TYPE"))
+                            {
+                                
+                            }
+                            else
+                            {
+                                send((int)cur_event.ident, S500, strlen(S500), 0);
+                            }
+                        }*/
                     }
-                    
-                    logic->recv_data[p - 2] = '\r';
-                    send((int)cur_event.ident, logic->recv_data, p, 0);
+                    else
+                    {
+                        // is binary file data is received
+                        
+                    }
                 }
+            }
+            else if (cur_event.filter & EVFILT_WRITE)
+            {
+                
             }
         }
         
@@ -221,7 +346,7 @@ int execute(struct Server_logic* logic)
             else
             {
                 ((struct User_data*)cur_event.udata)->monitor_pos = rep_kqueue_cnt;
-                logic->trigger_list[rep_kqueue_cnt] = cur_event;
+                logic->monitor_list[rep_kqueue_cnt] = cur_event;
                 ++rep_kqueue_cnt;
             }
         }
@@ -234,6 +359,7 @@ int execute(struct Server_logic* logic)
 int set_default(struct Server_logic* logic, int argc, char* argv[])
 {
     // default
+    
     logic->server_port = 21;
     strcpy(logic->server_path, "/tmp");
     
@@ -252,7 +378,7 @@ int set_default(struct Server_logic* logic, int argc, char* argv[])
             logic->server_port = temp_port;
             ++i;
         }
-        else if (!strcmp(argv[i], "-path"))
+        else if (!strcmp(argv[i], "-root"))
         {
             if (chdir(argv[i + 1]) == -1)
             {
@@ -275,6 +401,96 @@ int set_default(struct Server_logic* logic, int argc, char* argv[])
             printf("argv error: %s\n", argv[i]);
             return 1;
         }
+    }
+    return 0;
+}
+
+int retrieve_verb(struct Server_logic* logic)
+{
+    int len = (int)strlen(logic->recv_data);
+    if (!len) return 1;
+    
+    int space_pos = 0;
+    for (int i = 0; i <= len; ++i)
+    {
+        if (logic->recv_data[i] == ' ' || logic->recv_data[i] == '\0')
+        {
+            logic->recv_data[i] = '\0';
+            for (int j = 0; j < i; ++j)
+            {
+                logic->recv_data[j] = toupper(logic->recv_data[j]);
+            }
+            strcpy(logic->command_verb, logic->recv_data);
+            space_pos = i;
+            break;
+        }
+    }
+    
+    strcpy(logic->command_param, logic->recv_data + space_pos + 1);
+    return 0;
+}
+
+int cmd_USER(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data)
+{
+    if (user_data->login_status == LOGIN_SUCCESS)
+    {
+        send((int)cur_event.ident, S530_2, strlen(S530_2), 0);
+    }
+    else
+    {
+        strcpy(user_data->username, logic->command_param);
+        int username_length = (int)strlen(user_data->username);
+        for (int j = 0; j < username_length; ++j)
+        {
+            user_data->username[j] = tolower(user_data->username[j]);
+        }
+        user_data->login_status = LOGIN_NOPASSWORD;
+        send((int)cur_event.ident, S331, strlen(S331), 0);
+    }
+    return 0;
+}
+
+int cmd_PASS(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data)
+{
+    if (user_data->login_status == LOGIN_SUCCESS)
+    {
+        send((int)cur_event.ident, S530_2, strlen(S530_2), 0);
+    }
+    else if (user_data->login_status == LOGIN_NOUSERNAME)
+    {
+        send((int)cur_event.ident, S503, strlen(S503), 0);
+    }
+    else
+    {
+        if (!strcmp(user_data->username, "anonymous"))
+        {
+            user_data->login_status = LOGIN_SUCCESS;
+            send((int)cur_event.ident, S230, strlen(S230), 0);
+        }
+        else
+        {
+            user_data->login_status = LOGIN_NOUSERNAME;
+            send((int)cur_event.ident, S530, strlen(S530), 0);
+        }
+    }
+    return 0;
+}
+
+int cmd_SYST(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data)
+{
+    send((int)cur_event.ident, S215, strlen(S215), 0);
+    return 0;
+}
+
+int cmd_TYPE(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data)
+{
+    if (!strcmp(logic->command_param, "I"))
+    {
+        send((int)cur_event.ident, S200, strlen(S200), 0);
+    }
+    else
+    {
+        send((int)cur_event.ident, S504, strlen(S504), 0);
     }
     return 0;
 }

@@ -12,6 +12,8 @@
 #include <arpa/inet.h>
 
 #include "const.h"
+#include "reply.h"
+#include "userdata.h"
 
 struct Server_logic
 {
@@ -21,6 +23,9 @@ struct Server_logic
     int server_fd;
     struct sockaddr_in server_addr;
     char recv_data[RECEIVE_DATA_MAX];
+    char send_data[RECEIVE_DATA_MAX];
+    char command_verb[RECEIVE_DATA_MAX];
+    char command_param[RECEIVE_DATA_MAX];
     
     int kqueue_fd;
     int kqueue_cnt;
@@ -37,5 +42,11 @@ int kqueue_start(struct Server_logic* logic);
 int execute(struct Server_logic* logic);
 
 int set_default(struct Server_logic* logic, int argc, char* argv[]);
+int retrieve_verb(struct Server_logic* logic);
+
+int cmd_USER(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data);
+int cmd_PASS(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data);
+int cmd_SYST(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data);
+int cmd_TYPE(struct Server_logic* logic, struct kevent cur_event, struct User_data* user_data);
 
 #endif
