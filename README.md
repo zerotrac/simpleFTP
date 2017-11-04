@@ -11,16 +11,16 @@
 
 - (已完成) USER, PASS, SYST, TYPE, QUIT, ABOR 
 - (已完成) PORT, PASV, RETR, STOR
-- (施工中) MKD, RMD, CWD, LIST
+- (已完成) MKD, RMD, CWD, LIST
 - (已完成) Autograde 
 - (施工中) 自测无 bug
 
 ### Optional
 
 - (已完成) kqueue 完全异步 
-- (懈怠中) 绝对/相对路径支持 & 权限检查
+- (已完成) 绝对/相对路径支持 & 权限检查
 - (已完成) 命令大小写兼容
-- (施工中) PWD
+- (已完成) PWD
 
 ## TCP-Client
 
