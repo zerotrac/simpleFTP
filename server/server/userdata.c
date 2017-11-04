@@ -28,10 +28,15 @@ void close_all(struct User_data* user_data)
     user_data->closed = 1;
     close(user_data->fd);
     struct User_data* fa = user_data->connect_pt;
-    if (fa->connection_type == CONNECTION_PASV)
+    if (fa != NULL && fa->connection_type == CONNECTION_PASV)
     {
-        fa->accept_pt->deleted = 1;
-        fa->accept_pt->closed = 1;
+        if (fa->accept_pt != NULL)
+        {
+            fa->accept_pt->deleted = 1;
+            fa->accept_pt->closed = 1;
+        }
         close(fa->accept_pt->fd);
+        close(fa->pasvfd);
+        fa->pasvfd = -1;
     }
 }

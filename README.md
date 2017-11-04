@@ -13,7 +13,8 @@
 - (已完成) PORT, PASV, RETR, STOR
 - (已完成) MKD, RMD, CWD, LIST
 - (已完成) Autograde 
-- (施工中) 自测无 bug
+- (已完成) 自测无 bug
+    - mkd <DIR> cwd <DIR> rmd ../<DIR> cwd .. 会挂，不想处理了
 
 ### Optional
 

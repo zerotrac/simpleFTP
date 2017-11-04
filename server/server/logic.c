@@ -117,6 +117,8 @@ int execute(struct Server_logic* logic)
     {
         int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, &tmout);
         
+        printf("monitor list = %d\n", logic->kqueue_cnt);
+        
         if (nev < 0)
         {
             perror("kevent()");
@@ -249,6 +251,30 @@ int execute(struct Server_logic* logic)
                             {
                                 cmd_STOR(logic, user_data);
                             }
+                            else if (!strcmp(logic->command_verb, "MKD"))
+                            {
+                                cmd_MKD(logic, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "MKD"))
+                            {
+                                cmd_MKD(logic, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "RMD"))
+                            {
+                                cmd_RMD(logic, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "CWD"))
+                            {
+                                cmd_CWD(logic, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "PWD"))
+                            {
+                                cmd_PWD(logic, user_data);
+                            }
+                            else if (!strcmp(logic->command_verb, "LIST"))
+                            {
+                                cmd_LIST(logic, user_data);
+                            }
                             else
                             {
                                 send((int)cur_event.ident, S500, strlen(S500), 0);
@@ -294,18 +320,21 @@ int execute(struct Server_logic* logic)
                                 close_all(user_data);
                                 continue;
                             }
-                            user_data->filefd = fopen(user_data->file_path, "w");
-                            if (user_data->filefd == NULL)
-                            {
-                                send(user_data->connect_pt->fd, S451_W, strlen(S451_W), 0);
-                                close_all(user_data);
-                                continue;
-                            }
                         }
                         
                         int cnt = (int)recv(user_data->fd, logic->recv_data, RECEIVE_DATA_MAX, 0);
                         if (cnt)
                         {
+                            if (user_data->filefd == NULL)
+                            {
+                                user_data->filefd = fopen(user_data->file_path, "w");
+                                if (user_data->filefd == NULL)
+                                {
+                                    send(user_data->connect_pt->fd, S451_W, strlen(S451_W), 0);
+                                    close_all(user_data);
+                                    continue;
+                                }
+                            }
                             fwrite(logic->recv_data, 1, cnt, user_data->filefd);
                         }
                         else
@@ -321,7 +350,7 @@ int execute(struct Server_logic* logic)
             {
                 if (user_data->filefd == NULL)
                 {
-                    if (!check_permission(logic, user_data->file_path))
+                    if (!check_permission(logic, user_data->file_path) && !strstr(user_data->file_path, "list_rec.txt"))
                     {
                         send(user_data->connect_pt->fd, S451_R, strlen(S451_R), 0);
                         close_all(user_data);
@@ -781,12 +810,14 @@ int cmd_MKD(struct Server_logic* logic, struct User_data* user_data)
     
     if (!check_permission(logic, logic->send_data))
     {
+        printf("this 550\n");
         send(user_data->fd, S550, strlen(S550), 0);
     }
     else
     {
+        printf("that 550\n");
         int op = mkdir(logic->send_data, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
-        if (op)
+        if (op == 0)
         {
             send(user_data->fd, S250, strlen(S250), 0);
         }
@@ -816,7 +847,7 @@ int cmd_RMD(struct Server_logic* logic, struct User_data* user_data)
     else
     {
         int op = rmdir(logic->send_data);
-        if (op)
+        if (op == 0)
         {
             send(user_data->fd, S250, strlen(S250), 0);
         }
@@ -830,15 +861,24 @@ int cmd_RMD(struct Server_logic* logic, struct User_data* user_data)
 
 int cmd_CWD(struct Server_logic* logic, struct User_data* user_data)
 {
-    int op = chdir(logic->command_param);
-    if (!op)
+    if (logic->command_param[0] == '/')
+    {
+        sprintf(logic->send_data, "%s%s", logic->server_path, logic->command_param);
+    }
+    else
+    {
+        sprintf(logic->send_data, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+    }
+    
+    int op = chdir(logic->send_data);
+    if (op == -1)
     {
         send(user_data->fd, S550_2, strlen(S550_2), 0);
     }
     else
     {
         char* cur_path = getcwd(NULL, 0);
-        if (!check_permission(logic, cur_path))
+        if (strstr(cur_path, logic->server_path) != cur_path)
         {
             send(user_data->fd, S550, strlen(S550), 0);
         }
@@ -854,7 +894,14 @@ int cmd_CWD(struct Server_logic* logic, struct User_data* user_data)
 
 int cmd_PWD(struct Server_logic* logic, struct User_data* user_data)
 {
-    sprintf(logic->send_data, S257, user_data->relative_path);
+    if (!strlen(user_data->relative_path))
+    {
+        sprintf(logic->send_data, S257, "/");
+    }
+    else
+    {
+        sprintf(logic->send_data, S257, user_data->relative_path);
+    }
     send(user_data->fd, logic->send_data, strlen(logic->send_data), 0);
     return 0;
 }
