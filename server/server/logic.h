@@ -8,6 +8,7 @@
 
 #include <sys/socket.h>
 #include <sys/event.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
@@ -55,12 +56,15 @@ int cmd_PORT(struct Server_logic* logic, struct User_data* user_data);
 int cmd_PASV(struct Server_logic* logic, struct User_data* user_data);
 int cmd_RETR(struct Server_logic* logic, struct User_data* user_data);
 int cmd_STOR(struct Server_logic* logic, struct User_data* user_data);
-//int cmd_LIST(struct Server_logic* logic, struct User_data* user_data);
 
-//int cmd_MKD(struct Server_logic* logic, struct User_data* user_data);
-//int cmd_CWD(struct Server_logic* logic, struct User_data* user_data);
-//int cmd_RMD(struct Server_logic* logic, struct User_data* user_data);
+int cmd_MKD(struct Server_logic* logic, struct User_data* user_data);
+int cmd_RMD(struct Server_logic* logic, struct User_data* user_data);
+int cmd_CWD(struct Server_logic* logic, struct User_data* user_data);
+int cmd_PWD(struct Server_logic* logic, struct User_data* user_data);
+int cmd_LIST(struct Server_logic* logic, struct User_data* user_data);
 
+char* check_path_prefix(char* check_path);
+int check_permission(struct Server_logic* logic, char* check_path);
 char* get_IP(); // copied from Shichen Liu
 
 #endif

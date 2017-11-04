@@ -12,14 +12,20 @@
 #define S226 "226 Transfer complete.\r\n"
 #define S227 "227 Entering Passive Mode (%s,%d,%d)\r\n"
 #define S230 "230 Login successful.\r\n"
+#define S250 "250 Command successful.\r\n"
+#define S257 "257 \"%s\"\r\n"
 #define S331 "331 Please specify the password.\r\n"
 #define S425 "425 Use PORT or PASV first.\r\n"
 #define S426 "426 Connection failed.\r\n"
-#define S451 "451 Failed to read file from disk.\r\n"
+#define S451_R "451 Failed to read file from disk.\r\n"
+#define S451_W "451 Failed to write file to disk.\r\n"
 #define S500 "500 Unknown command.\r\n"
 #define S503 "503 Login with USER first.\r\n"
 #define S504 "504 Unknown parameter.\r\n"
 #define S530 "530 Login incorrect.\r\n"
 #define S530_2 "530 Can't change from guest user.\r\n"
+#define S550 "550 Permission denied.\r\n"
+#define S550_2 "550 No such file or directory.\r\n"
+
 
 #endif

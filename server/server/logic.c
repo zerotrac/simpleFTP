@@ -117,8 +117,6 @@ int execute(struct Server_logic* logic)
     {
         int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, &tmout);
         
-        //printf("total count = %d\n", logic->kqueue_cnt);
-        
         if (nev < 0)
         {
             perror("kevent()");
@@ -167,7 +165,7 @@ int execute(struct Server_logic* logic)
                     {
                         ssize_t n = recv((int)cur_event.ident, logic->recv_data, RECEIVE_DATA_MAX, 0);
                         
-                        //printf("receive data %d bytes.\n", (int)n);
+                        printf("receive data %d bytes.\n", (int)n);
                         if (n < 0)
                         {
                             // client error
@@ -195,8 +193,8 @@ int execute(struct Server_logic* logic)
                             continue;
                         }
                         
-                        //printf("verb = |%s|\n", logic->command_verb);
-                        //printf("param = |%s|\n", logic->command_param);
+                        printf("verb = |%s|\n", logic->command_verb);
+                        printf("param = |%s|\n", logic->command_param);
                         
                         if (!strcmp(logic->command_verb, "USER"))
                         {
@@ -290,11 +288,18 @@ int execute(struct Server_logic* logic)
                     {
                         if (user_data->filefd == NULL)
                         {
+                            if (!check_permission(logic, user_data->file_path))
+                            {
+                                send(user_data->connect_pt->fd, S451_W, strlen(S451_W), 0);
+                                close_all(user_data);
+                                continue;
+                            }
                             user_data->filefd = fopen(user_data->file_path, "w");
                             if (user_data->filefd == NULL)
                             {
-                                send(user_data->connect_pt->fd, S451, strlen(S451), 0);
+                                send(user_data->connect_pt->fd, S451_W, strlen(S451_W), 0);
                                 close_all(user_data);
+                                continue;
                             }
                         }
                         
@@ -316,11 +321,18 @@ int execute(struct Server_logic* logic)
             {
                 if (user_data->filefd == NULL)
                 {
+                    if (!check_permission(logic, user_data->file_path))
+                    {
+                        send(user_data->connect_pt->fd, S451_R, strlen(S451_R), 0);
+                        close_all(user_data);
+                        continue;
+                    }
                     user_data->filefd = fopen(user_data->file_path, "r");
                     if (user_data->filefd == NULL)
                     {
-                        send(user_data->connect_pt->fd, S451, strlen(S451), 0);
+                        send(user_data->connect_pt->fd, S451_R, strlen(S451_R), 0);
                         close_all(user_data);
+                        continue;
                     }
                 }
                 
@@ -379,7 +391,13 @@ int set_default(struct Server_logic* logic, int argc, char* argv[])
     // default
     
     logic->server_port = 21;
-    strcpy(logic->server_path, "/tmp");
+    char* prev = getcwd(NULL, 0);
+    chdir("/tmp");
+    char* tmp = getcwd(NULL, 0);
+    strcpy(logic->server_path, tmp);
+    chdir(prev);
+    free(tmp);
+    free(prev);
     
     // arguments
     
@@ -410,7 +428,14 @@ int set_default(struct Server_logic* logic, int argc, char* argv[])
                 printf("argv error: %s\n", argv[i + 1]);
                 return 1;
             }
-            strcpy(logic->server_path, absolute_path);
+            if (!strcmp(absolute_path, "/"))
+            {
+                logic->server_path[0] = '\0';
+            }
+            else
+            {
+                strcpy(logic->server_path, absolute_path);
+            }
             free(absolute_path);
             ++i;
         }
@@ -420,6 +445,7 @@ int set_default(struct Server_logic* logic, int argc, char* argv[])
             return 1;
         }
     }
+    
     return 0;
 }
 
@@ -444,6 +470,7 @@ int retrieve_verb(struct Server_logic* logic)
         }
     }
     
+    while (logic->recv_data[space_pos + 1] == ' ') ++space_pos;
     strcpy(logic->command_param, logic->recv_data + space_pos + 1);
     return 0;
 }
@@ -603,6 +630,10 @@ int cmd_RETR(struct Server_logic* logic, struct User_data* user_data)
         send(user_data->fd, S425, strlen(S425), 0);
         return 0;
     }
+    else if (!strlen(logic->command_param))
+    {
+        send(user_data->fd, S504, strlen(S504), 0);
+    }
     else if (user_data->connection_type == CONNECTION_PORT)
     {
         // port
@@ -626,7 +657,14 @@ int cmd_RETR(struct Server_logic* logic, struct User_data* user_data)
         
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
-        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
+        if (logic->command_param[0] == '/')
+        {
+            sprintf(data->file_path, "%s%s", logic->server_path, logic->command_param);
+        }
+        else
+        {
+            sprintf(data->file_path, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+        }
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
         
@@ -638,7 +676,14 @@ int cmd_RETR(struct Server_logic* logic, struct User_data* user_data)
         
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_ACCEPT_PIPE, user_data, user_data->pasvfd);
-        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
+        if (logic->command_param[0] == '/')
+        {
+            sprintf(data->file_path, "%s%s", logic->server_path, logic->command_param);
+        }
+        else
+        {
+            sprintf(data->file_path, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+        }
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], user_data->pasvfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
         
@@ -650,6 +695,171 @@ int cmd_RETR(struct Server_logic* logic, struct User_data* user_data)
 }
 
 int cmd_STOR(struct Server_logic* logic, struct User_data* user_data)
+{
+    if (user_data->connection_type == CONNECTION_NONE)
+    {
+        // no connection return 425
+        
+        send(user_data->fd, S425, strlen(S425), 0);
+        return 0;
+    }
+    else if (!strlen(logic->command_param))
+    {
+        send(user_data->fd, S504, strlen(S504), 0);
+    }
+    else if (user_data->connection_type == CONNECTION_PORT)
+    {
+        // port
+        
+        int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        struct sockaddr_in addr;
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(user_data->port);
+        
+        if (inet_pton(AF_INET, user_data->host, &addr.sin_addr) <= 0)
+        {
+            send(user_data->fd, S426, strlen(S426), 0);
+            return 0;
+        }
+        
+        if (connect(sockfd, (struct sockaddr*)&addr, sizeof addr) < 0)
+        {
+            send(user_data->fd, S426, strlen(S426), 0);
+            return 0;
+        }
+        
+        struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
+        User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
+        if (logic->command_param[0] == '/')
+        {
+            sprintf(data->file_path, "%s%s", logic->server_path, logic->command_param);
+        }
+        else
+        {
+            sprintf(data->file_path, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+        }
+        EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+        ++logic->kqueue_cnt;
+        
+        user_data->transport_pt = data;
+    }
+    else
+    {
+        // pasv
+        
+        struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
+        User_initialize(data, CLIENT_ACCEPT_PIPE, user_data, user_data->pasvfd);
+        data->which_stream = STREAM_STOR;
+        if (logic->command_param[0] == '/')
+        {
+            sprintf(data->file_path, "%s%s", logic->server_path, logic->command_param);
+        }
+        else
+        {
+            sprintf(data->file_path, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+        }
+        EV_SET(&logic->monitor_list[logic->kqueue_cnt], user_data->pasvfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+        ++logic->kqueue_cnt;
+        
+        user_data->accept_pt = data;
+    }
+    
+    send(user_data->fd, S150, strlen(S150), 0);
+    return 0;
+}
+
+int cmd_MKD(struct Server_logic* logic, struct User_data* user_data)
+{
+    if (logic->command_param[0] == '/')
+    {
+        sprintf(logic->send_data, "%s%s", logic->server_path, logic->command_param);
+    }
+    else
+    {
+        sprintf(logic->send_data, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+    }
+    
+    if (!check_permission(logic, logic->send_data))
+    {
+        send(user_data->fd, S550, strlen(S550), 0);
+    }
+    else
+    {
+        int op = mkdir(logic->send_data, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        if (op)
+        {
+            send(user_data->fd, S250, strlen(S250), 0);
+        }
+        else
+        {
+            send(user_data->fd, S550, strlen(S550), 0);
+        }
+    }
+    return 0;
+}
+
+int cmd_RMD(struct Server_logic* logic, struct User_data* user_data)
+{
+    if (logic->command_param[0] == '/')
+    {
+        sprintf(logic->send_data, "%s%s", logic->server_path, logic->command_param);
+    }
+    else
+    {
+        sprintf(logic->send_data, "%s%s/%s", logic->server_path, user_data->relative_path, logic->command_param);
+    }
+    
+    if (!check_permission(logic, logic->send_data))
+    {
+        send(user_data->fd, S550, strlen(S550), 0);
+    }
+    else
+    {
+        int op = rmdir(logic->send_data);
+        if (op)
+        {
+            send(user_data->fd, S250, strlen(S250), 0);
+        }
+        else
+        {
+            send(user_data->fd, S550_2, strlen(S550_2), 0);
+        }
+    }
+    return 0;
+}
+
+int cmd_CWD(struct Server_logic* logic, struct User_data* user_data)
+{
+    int op = chdir(logic->command_param);
+    if (!op)
+    {
+        send(user_data->fd, S550_2, strlen(S550_2), 0);
+    }
+    else
+    {
+        char* cur_path = getcwd(NULL, 0);
+        if (!check_permission(logic, cur_path))
+        {
+            send(user_data->fd, S550, strlen(S550), 0);
+        }
+        else
+        {
+            send(user_data->fd, S250, strlen(S250), 0);
+            strcpy(user_data->relative_path, cur_path + strlen(logic->server_path));
+        }
+        free(cur_path);
+    }
+    return 0;
+}
+
+int cmd_PWD(struct Server_logic* logic, struct User_data* user_data)
+{
+    sprintf(logic->send_data, S257, user_data->relative_path);
+    send(user_data->fd, logic->send_data, strlen(logic->send_data), 0);
+    return 0;
+}
+
+int cmd_LIST(struct Server_logic* logic, struct User_data* user_data)
 {
     if (user_data->connection_type == CONNECTION_NONE)
     {
@@ -681,8 +891,10 @@ int cmd_STOR(struct Server_logic* logic, struct User_data* user_data)
         
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
-        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
-        EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
+        sprintf(data->file_path, "/Users/chenshuxin/Desktop/list_rec.txt");
+        sprintf(logic->send_data, "ls -l %s%s > %s", logic->server_path, user_data->relative_path, data->file_path);
+        system(logic->send_data);
+        EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
         
         user_data->transport_pt = data;
@@ -693,8 +905,9 @@ int cmd_STOR(struct Server_logic* logic, struct User_data* user_data)
         
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_ACCEPT_PIPE, user_data, user_data->pasvfd);
-        data->which_stream = STREAM_STOR;
-        sprintf(data->file_path, "%s%s%s", logic->server_path, user_data->relative_path, logic->command_param);
+        sprintf(data->file_path, "/Users/chenshuxin/Desktop/list_rec.txt");
+        sprintf(logic->send_data, "ls -l %s%s > %s", logic->server_path, user_data->relative_path, data->file_path);
+        system(logic->send_data);
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], user_data->pasvfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
         
@@ -702,6 +915,49 @@ int cmd_STOR(struct Server_logic* logic, struct User_data* user_data)
     }
     
     send(user_data->fd, S150, strlen(S150), 0);
+    return 0;
+}
+
+char* check_path_prefix(char* check_path)
+{
+    int len = (int)strlen(check_path);
+    int pos = 0;
+    for (int i = len - 1; i >= 0; --i)
+    {
+        if (check_path[i] == '/')
+        {
+            pos = i;
+            break;
+        }
+    }
+    char bt = check_path[pos];
+    check_path[pos] = '\0';
+    char* return_path = (char*)malloc(len + 1);
+    strcpy(return_path, check_path);
+    check_path[pos] = bt;
+    return return_path;
+}
+
+int check_permission(struct Server_logic* logic, char* check_path)
+{
+    char* prefix = check_path_prefix(check_path);
+    printf("pref = %s %s %s\n", prefix, check_path, logic->server_path);
+    int op = chdir(prefix);
+    if (op == -1)
+    {
+        free(prefix);
+        return 0;
+    }
+    char* cur_path = getcwd(NULL, 0);
+    printf("cur = %s\n", cur_path);
+    if (!strlen(logic->server_path) || strstr(cur_path, logic->server_path) == cur_path)
+    {
+        free(prefix);
+        free(cur_path);
+        return 1;
+    }
+    free(prefix);
+    free(cur_path);
     return 0;
 }
 
