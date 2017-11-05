@@ -939,7 +939,7 @@ int cmd_LIST(struct Server_logic* logic, struct User_data* user_data)
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
         sprintf(data->file_path, "/Users/chenshuxin/Desktop/list_rec.txt");
-        sprintf(logic->send_data, "ls -l %s%s > %s", logic->server_path, user_data->relative_path, data->file_path);
+        sprintf(logic->send_data, "ls %s %s%s > %s", logic->server_path, logic->command_param, user_data->relative_path, data->file_path);
         system(logic->send_data);
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
