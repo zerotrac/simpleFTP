@@ -117,7 +117,7 @@ int execute(struct Server_logic* logic)
     {
         int nev = kevent(logic->kqueue_fd, logic->monitor_list, logic->kqueue_cnt, logic->trigger_list, KQUEUE_MONITOR_MAX, &tmout);
         
-        printf("monitor list = %d\n", logic->kqueue_cnt);
+        //printf("monitor list = %d\n", logic->kqueue_cnt);
         
         if (nev < 0)
         {
@@ -167,7 +167,7 @@ int execute(struct Server_logic* logic)
                     {
                         ssize_t n = recv((int)cur_event.ident, logic->recv_data, RECEIVE_DATA_MAX, 0);
                         
-                        printf("receive data %d bytes.\n", (int)n);
+                        //printf("receive data %d bytes.\n", (int)n);
                         if (n < 0)
                         {
                             // client error
@@ -195,8 +195,8 @@ int execute(struct Server_logic* logic)
                             continue;
                         }
                         
-                        printf("verb = |%s|\n", logic->command_verb);
-                        printf("param = |%s|\n", logic->command_param);
+                        //printf("verb = |%s|\n", logic->command_verb);
+                        //printf("param = |%s|\n", logic->command_param);
                         
                         if (!strcmp(logic->command_verb, "USER"))
                         {
@@ -810,12 +810,10 @@ int cmd_MKD(struct Server_logic* logic, struct User_data* user_data)
     
     if (!check_permission(logic, logic->send_data))
     {
-        printf("this 550\n");
         send(user_data->fd, S550, strlen(S550), 0);
     }
     else
     {
-        printf("that 550\n");
         int op = mkdir(logic->send_data, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
         if (op == 0)
         {
@@ -939,7 +937,8 @@ int cmd_LIST(struct Server_logic* logic, struct User_data* user_data)
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_FILE_PIPE, user_data, sockfd);
         sprintf(data->file_path, "/Users/chenshuxin/Desktop/list_rec.txt");
-        sprintf(logic->send_data, "ls %s %s%s > %s", logic->server_path, logic->command_param, user_data->relative_path, data->file_path);
+        sprintf(logic->send_data, "ls %s %s%s > %s", logic->command_param, logic->server_path, user_data->relative_path, data->file_path);
+        printf("data = %s\n", logic->send_data);
         system(logic->send_data);
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], sockfd, EVFILT_WRITE, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
@@ -953,7 +952,7 @@ int cmd_LIST(struct Server_logic* logic, struct User_data* user_data)
         struct User_data* data = (struct User_data*) malloc(sizeof(struct User_data));
         User_initialize(data, CLIENT_ACCEPT_PIPE, user_data, user_data->pasvfd);
         sprintf(data->file_path, "/Users/chenshuxin/Desktop/list_rec.txt");
-        sprintf(logic->send_data, "ls -l %s%s > %s", logic->server_path, user_data->relative_path, data->file_path);
+        sprintf(logic->send_data, "ls %s %s%s > %s", logic->command_param, logic->server_path, user_data->relative_path, data->file_path);
         system(logic->send_data);
         EV_SET(&logic->monitor_list[logic->kqueue_cnt], user_data->pasvfd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, data);
         ++logic->kqueue_cnt;
@@ -988,7 +987,6 @@ char* check_path_prefix(char* check_path)
 int check_permission(struct Server_logic* logic, char* check_path)
 {
     char* prefix = check_path_prefix(check_path);
-    printf("pref = %s %s %s\n", prefix, check_path, logic->server_path);
     int op = chdir(prefix);
     if (op == -1)
     {
@@ -996,7 +994,6 @@ int check_permission(struct Server_logic* logic, char* check_path)
         return 0;
     }
     char* cur_path = getcwd(NULL, 0);
-    printf("cur = %s\n", cur_path);
     if (!strlen(logic->server_path) || strstr(cur_path, logic->server_path) == cur_path)
     {
         free(prefix);

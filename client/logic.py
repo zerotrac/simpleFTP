@@ -49,6 +49,9 @@ class ClientLogic:
         code = self.receive_code()
         print(code)
 
+    def extract(self, st):
+        return st.split('/')[-1]
+
     def send_code(self, code):
         self.socket.send((code.strip() + '\r\n').encode('utf-8'))
 
@@ -171,7 +174,7 @@ class ClientLogic:
                         trans_socket.close()
                         continue
 
-                    f = open(codes[1], 'wb')
+                    f = open(self.extract(codes[1]), 'wb')
                     self.receive_data(trans_socket, f)
                     print(self.receive_code())
 
@@ -185,7 +188,7 @@ class ClientLogic:
 
                     trans_socket, addr = conn_socket.accept()
 
-                    f = open(codes[1], 'wb')
+                    f = open(self.extract(codes[1]), 'wb')
                     self.receive_data(trans_socket, f)
                     conn_socket.close()
                     print(self.receive_code())
@@ -207,7 +210,7 @@ class ClientLogic:
                         trans_socket.close()
                         break
 
-                    f = open(codes[1], 'rb')
+                    f = open(self.extract(codes[1]), 'rb')
                     self.send_data(trans_socket, f)
                     print(self.receive_code())
 
@@ -221,7 +224,7 @@ class ClientLogic:
 
                     trans_socket, addr = conn_socket.accept()
 
-                    f = open(codes[1], 'rb')
+                    f = open(self.extract(codes[1]), 'rb')
                     self.send_data(trans_socket, f)
                     conn_socket.close()
                     print(self.receive_code())
