@@ -16,6 +16,7 @@
 - (已完成) 自测无 bug
     - `mkd <DIR> cwd <DIR> rmd ../<DIR> cwd ..` 会挂，不想处理了，这要写`cwd ..`的手动解析...
     - `retr ..`可能会挂，哇都是`..`的锅
+    - Client 的错误使用可能会造成 Server 结束运行，而且不报 error，这个真的不想调了...
 
 ### Optional
 
@@ -30,15 +31,18 @@
 
 ### Fundamental
 
-- (懈怠中) USER, PASS, SYST, TYPE, QUIT, ABOR
-- (懈怠中) PORT, PASV, RETR, STOR
-- (懈怠中) MKD, RMD, CWD, LIST
-- (懈怠中) 自测无 bug
+- (已完成) USER, PASS, SYST, TYPE, QUIT, ABOR
+- (已完成) PORT, PASV, RETR, STOR
+- (已完成) MKD, RMD, CWD, LIST
+- (已完成) 自测无 bug
 
 ### Optional
 
-- (懈怠中) 简易 shell
-- (懈怠中) PWD
+- (已完成) 简易 shell
+    - 封装了`passive [on|off]`
+    - 封装了`mkdir rmdir cd ls <-command>`
+    - 封装了`get put`
+- (已完成) PWD
 
 ## Report
 
